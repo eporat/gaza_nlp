@@ -42,13 +42,15 @@ labeling_column = [
 ]
 
 submit_column = [
-    [sg.OK('OK', font=("Arial", 18), pad=50, key='OK')]
+    [sg.OK('OK', font=("Arial", 18), pad=50, key='OK'), sg.OK('Skip', font=("Arial", 18), pad=50, key='SKIP', button_color='red'), 
+    sg.OK('Back', font=("Arial", 18), pad=50, key='BACK', button_color='blue')]
 ]
 
 column_names = ["airstrike IDF", "rocket PAL",
 "mortar PAL",
 "shelling IDF",
 "incursion IDF",
+"firing IDF",
 "Israel Killed",
 "Israel Injured",
 "Civ Killed IDF",
@@ -63,10 +65,10 @@ column_names = ["airstrike IDF", "rocket PAL",
 "High Ranking Other Injured",
 "Location Hit/Targeted PAL"]
 
-data_entry_column = [[] for i in range(6)]
+data_entry_column = [[] for i in range(8)]
 for i, column_name in enumerate(column_names):
     data_entry_column[i//3].append(sg.Text(column_name, font=("Arial", 18))) 
-    data_entry_column[i//3].append(sg.In(key=column_name, font=("Arial", 18), size=(3,3)))
+    data_entry_column[i//3].append(sg.Spin(values=list(range(100)), key=column_name, font=("Arial", 18),initial_value=0, size=(3,3)))
 
 
 
@@ -117,16 +119,56 @@ def update(file):
     areas = list(file_entry.keys())[1:]
     update_sentence()
 
+def back():
+    global sentence_index, area_index, file_index, marked
+    if area_index == 0 and sentence_index == 0 and file_index == 0:
+        sg.Popup("can't go back!", keep_on_top=True)
+        return
+    elif area_index == 0 and sentence_index == 0:
+        sg.Popup("moving back a file!", keep_on_top=True)
+        file_index -= 1
+        update(fnames[file_index])
+        area_index = 3
+        area = areas[area_index]
+        sentence_index = len(file_entry[area]['events']) - 1
+    elif sentence_index == 0:
+        area = areas[area_index]
+        area_index -= 1
+        sentence_index = len(file_entry[area]['events']) - 1
+    else:
+        sentence_index -= 1
+    update_sentence()
+
+def skip():
+    global sentence_index, area_index, file_index, marked
+    sentence_index += 1
+
+    area = areas[area_index]
+    if sentence_index == len(file_entry[area]['events']):
+        area_index += 1
+        sentence_index = 0
+    
+    if area_index == 4:
+        file_index += 1
+        area_index = 0
+        if file_index == len(fnames):
+            sg.Popup('No more files!', keep_on_top=True)
+        else:
+            update(fnames[file_index])
+    
+    update_sentence()
+
 def update_sentence():
     global sentence_index, area_index, file_index, marked
 
     area = areas[area_index]
     window["-AREA-"].update(area.capitalize())   
     window['STARTDATE'].update(file_entry[area]["events"][sentence_index]["time"])
-    if sentence_index + 1 < len(file_entry[area]["events"]):
-        window['ENDDATE'].update(file_entry[area]["events"][sentence_index+1]["time"])
-    else:
-        window['ENDDATE'].update(file_entry[area]["events"][sentence_index]["time"])
+    window['ENDDATE'].update(file_entry[area]["events"][sentence_index]["time"])
+    # if sentence_index + 1 < len(file_entry[area]["events"]):
+    #     window['ENDDATE'].update(file_entry[area]["events"][sentence_index+1]["time"])
+    # else:
+    #     window['ENDDATE'].update(file_entry[area]["events"][sentence_index]["time"])
 
     before_sentence = ''.join(map(lambda x: x['content'].strip() + '.', file_entry[area]["events"][:sentence_index]))
     after_sentence = ''.join(map(lambda x: x['content'].strip() + '.', file_entry[area]["events"][sentence_index+1:]))
@@ -168,32 +210,21 @@ while True:
             sg.Popup('Invalid directory', keep_on_top=True)
         else:
             update(fnames[file_index])
-    if event == 'OK' and fnames:
+    if not fnames:
+        continue
+    if event == 'OK':
         try:
-            row = [str(int(marked)), window['-FILENAME-'].get(), window['-AREA-'].get(), str(sentence_index), window['STARTDATE'].get(), window['ENDDATE'].get()] + [window[datacolumn].get() for datacolumn in column_names]
-            csvfile.write(','.join(row) + '\n')
+            row = [str(int(marked)), window['-FILENAME-'].get(), window['-AREA-'].get(), str(sentence_index), window['STARTDATE'].get(), window['ENDDATE'].get()] \
+                + [window[datacolumn].get() for datacolumn in column_names]
+            csvfile.write(','.join(map(str, row)) + '\n')
             csvfile.close()
             csvfile = open('output.csv', mode='a')
-            sentence_index += 1
-
-            area = areas[area_index]
-            if sentence_index == len(file_entry[area]['events']):
-                area_index += 1
-                sentence_index = 0
-            
-            if area_index == 4:
-                file_index += 1
-                area_index = 0
-                if file_index == len(fnames):
-                    sg.Popup('No more files!', keep_on_top=True)
-                else:
-                    update(fnames[file_index])
-            
-            update_sentence()
-
+            skip()
         except Exception as e:
             raise e
-        #     print(e)
-        #     sg.Popup('No more files!', keep_on_top=True)
+    if event == 'SKIP':
+        skip()
+    if event == 'BACK':
+        back()
 
 window.close()
